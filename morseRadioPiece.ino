@@ -39,7 +39,7 @@
 
 long frequency = 90300000;          // the default initial frequency in Hz
 long newFrequency = 0;
-boolean gOnAir = true;             // Initially, NOT On The Air...
+boolean gOnAir = false;             // Initially, NOT On The Air...
 
 #define upButton 6                  // up button on pin 6
 #define downButton 5                // down button on pin 5
@@ -48,56 +48,21 @@ boolean gOnAir = true;             // Initially, NOT On The Air...
 
 void setup() {
   Serial.begin(9600);                 //for debugging
-  pinMode(upButton, INPUT_PULLUP);
-  pinMode(downButton, INPUT_PULLUP);
-  pinMode(setButton, INPUT_PULLUP);
+//  pinMode(upButton, INPUT_PULLUP);
+//  pinMode(downButton, INPUT_PULLUP);
+//  pinMode(setButton, INPUT_PULLUP);
   Wire.begin();                       // join i2c bus as master
   transmitter_setup( frequency );
   randomSeed(analogRead(3) + analogRead(5));
+  transmitter_standby(frequency);
 }
 
 
 
 void loop() {
-  // transmitter_standby(frequency);
 
-  /*
-  if (digitalRead(upButton) == LOW) {
-   
-   
-   frequency += incrFM;         // 200kHz steps for North American channel spacing
-   
-   delay(100);
-   frequency = constrain( frequency, botFM, topFM);  // Keeps us in range...
-   
-   // Serial.println( frequency, DEC );
-   //   transmitter_standby( frequency );
-   }
-   
-   if (digitalRead(downButton) == LOW) {
-   frequency -= incrFM;                              // 200kHz steps for North American channel spacing
-   delay(100);
-   frequency = constrain( frequency, botFM, topFM);  // Keeps us in range...
-   
-   // Serial.println( frequency, DEC );
-   //   transmitter_standby( frequency );
-   }
-   
-   if (digitalRead(setButton) == LOW) {
-   // Create a 'toggle' - pressing set while OnAir - set's StandBy and
-   // if we're already StandBy, set the Frequency and go OnAir... 
-   if ( gOnAir ) {
-   transmitter_standby( frequency );
-   }
-   else {
-   set_freq( frequency );
-   //     saveFrequency( frequency );     // Save the Frequency to EEPROM Memory
-   delay(1000);
-   }
-   }
-   */
   check_serial();
-  // Serial.println(newFrequency);
+ 
 }
 
 
@@ -125,7 +90,6 @@ void transmitter_standby( long aFrequency )
   //i2c_send(0x00, B10100000); //Register 0: 200mV audio input, 75us pre-emphasis on, crystal off, power OFF
   i2c_send(0x00, B00100000); //Register 0: 100mV audio input, 75us pre-emphasis on, crystal off, power OFF
 
-
   delay(100);
   gOnAir = false;
 }
@@ -137,20 +101,20 @@ void set_freq( long aFrequency )
   // New Range Checking... Implement the (experimentally determined) VFO bands:
   if (aFrequency < 88500000) {                       // Band 3
     i2c_send(0x08, B00011011);
-    Serial.println("Band 3");
+    //Serial.println("Band 3");
   }  
   else if (aFrequency < 97900000) {                 // Band 2
     i2c_send(0x08, B00011010);
-    Serial.println("Band 2");
+    //Serial.println("Band 2");
   }
   else if (aFrequency < 103000000) {                  // Band 1 
     i2c_send(0x08, B00011001);
-    Serial.println("Band 1");
+    //Serial.println("Band 1");
   }
   else {
     // Must be OVER 103.000.000,                    // Band 0
     i2c_send(0x08, B00011000);
-    Serial.println("Band 0");
+    //Serial.println("Band 0");
   }
 
 
@@ -168,8 +132,8 @@ void set_freq( long aFrequency )
 
   i2c_send(0x0E, B00000101);                        //software reset  
 
-  Serial.print("Frequency changed to ");
-  Serial.println(aFrequency, DEC);
+  //Serial.print("Frequency changed to ");
+ // Serial.println(aFrequency, DEC);
 
   //i2c_send(0x00, B10100001); //Register 0: 200mV audio input, 75us pre-emphasis on, crystal off, power ON
   i2c_send(0x00, B00100001); //Register 0: 100mV audio input, 75us pre-emphasis on, crystal off, power ON
@@ -187,57 +151,25 @@ void i2c_send(byte reg, byte data)
   delay(5);                                       // allow register to set
 }
 
-/*
-  SerialEvent occurs whenever a new data comes in the
- hardware serial RX.  This routine is run between each
- time loop() runs, so using delay inside loop can delay
- response.  Multiple bytes of data may be available.
- */
-/*
-void serialEvent() {
- while (Serial.available()) {
- if (Serial.read() == 255) {
- randomSeed(analogRead(3) + analogRead(5));
- long tempFrequency = (long) random(875, 1079);
- newFrequency = tempFrequency * 100000;
- digitalWrite(13, LOW);
- delay(100);
- digitalWrite(13, HIGH);
- delay(100);
- }
-/*
- // get the new byte:
- char inChar = (char)Serial.read(); 
- // add it to the inputString:
- inputString += inChar;
- // if the incoming character is a newline, set a flag
- // so the main loop can do something about it:
- if (inChar == '\n') {
- stringComplete = true;
- } 
- */
+
+
 
 void check_serial() {
   if (Serial.available() > 0) {
     int inByte = Serial.read();
     Serial.write(inByte);
-    // press enter
+  
+  
     if (inByte == 255) {
       transmitter_standby(frequency);
       long randomFrequency = (long) random(875, 1079);
       Serial.write(randomFrequency/10);
       long tempFrequency = randomFrequency * 100000;
       frequency = tempFrequency;
-      if (gOnAir) { 
-        transmitter_standby( frequency );
-      }
-      else {
-        set_freq(frequency);
-        //     saveFrequency( frequency );     // Save the Frequency to EEPROM Memory
-      }
-      delay(500);
+      set_freq(frequency);
     }
-    // press tab
+ 
+ 
     if (inByte == 254) {
       transmitter_standby(frequency);
     }
