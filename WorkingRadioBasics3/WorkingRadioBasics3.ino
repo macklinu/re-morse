@@ -131,7 +131,7 @@ void readEncoder() {
     }
     else {
       set_freq( frequency );
-      Serial.println(frequency);
+      // Serial.println(frequency);
       delay(1000);
       buttonState = HIGH;
     }
@@ -157,17 +157,17 @@ void doEncoder() {
 }
 
 void print_lcd_frequency(long input) {
-   int freq;
-   
-   freq = (int) (input / 100000);
-   number[0] = freq / 1000; // should be 0 or 1
-   if (number[0] == 0) number[0] = 15; // display blank LCD character
-   freq = freq % 1000;
-   number[1] = freq / 100;
-   freq = freq % 100;
-   number[2] = freq / 10;
-   freq = freq % 10;
-   number[3] = freq;
+  int freq;
+
+  freq = (int) (input / 100000);
+  number[0] = freq / 1000; // should be 0 or 1
+  if (number[0] == 0) number[0] = 15; // display blank LCD character
+  freq = freq % 1000;
+  number[1] = freq / 100;
+  freq = freq % 100;
+  number[2] = freq / 10;
+  freq = freq % 10;
+  number[3] = freq;
 }
 
 
@@ -234,8 +234,8 @@ void set_freq(long aFrequency) {
 
   i2c_send(0x0E, B00000101);                        //software reset  
 
-  Serial.print("Frequency changed to ");
-  Serial.println(aFrequency, DEC);
+  // Serial.print("Frequency changed to ");
+  // Serial.println(aFrequency, DEC);
 
   //i2c_send(0x00, B10100001); //Register 0: 200mV audio input, 75us pre-emphasis on, crystal off, power ON
   i2c_send(0x00, B00100001); //Register 0: 100mV audio input, 75us pre-emphasis on, crystal off, power ON
@@ -256,7 +256,6 @@ void i2c_send(byte reg, byte data)
 void check_serial() {
   if (Serial.available() > 0) {
     int inByte = Serial.read();
-    Serial.write(inByte); // communicate received message back to Max for debugging
     // set random frequency
     /*
     if (inByte == 255) {
@@ -269,22 +268,31 @@ void check_serial() {
     if (inByte == 255) serialCount = 0;
     // set incoming byte into a temporary array and move through it
     // these values will be reassigned
-    serialArray[serialCount] = inByte;
-    Serial.write(serialArray[0]);
-    Serial.write(serialArray[1]);
-    serialCount++;
-    if (serialCount == 2) {
-      frequency = (serialArray[0] * 100) + serialArray[1];
-      // reset the serial count to receive the next message
-      serialCount = 0;
+    else {
+      serialArray[serialCount] = inByte;
+      serialCount++; 
+      if (serialCount == 2) {
+        transmitter_standby(frequency);
+        int left = serialArray[0] * 100;
+        long tempFrequency = left + (long) serialArray[1];
+        frequency = tempFrequency * 10000;
+        set_freq(frequency);
+        Serial.write(serialArray[0]);
+        Serial.write(serialArray[1]);
+        // reset the serial count to receive the next message
+        serialCount = 0;
+      }
     }
+
     // set transmitter into standby mode
     if (inByte == 254) {
       transmitter_standby(frequency);
     }
-    
+
   }
 }
+
+
 
 
 

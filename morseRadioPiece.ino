@@ -28,54 +28,160 @@
 
 #include <Wire.h>
 
-#define setButton 4                 // set button on pin 4
-
 #define topFM  107900000            // Top of the FM Dial Range in USA
 #define botFM   87500000            // Bottom of the FM Dial Range in USA
 #define incrFM    200000            // FM Channel Increment in USA
+#define encoderPinA  2
+#define encoderPinB  3
+#define buttonPin 13
 
-long frequency = 90300000;          // the default initial frequency in Hz
+// encoder
+int encoderPos = 0;
+int buttonState;
+int lastButtonState = LOW;
+long lastDebounceTime= 0;
+long debounceDelay = 50;
+
+byte ls247pins[] = {
+  4, 5, 6, 7};
+byte anodepins[] = {
+  9, 10, 11, 12};
+byte dp = 8; // decimal point
+byte number[] = {
+  15, 8, 8, 7};
+
+long frequency = 99300000;          // the default initial frequency in Hz
 long newFrequency = 0;
 boolean gOnAir = false;             // Initially, NOT On The Air...
-
-#define upButton 6                  // up button on pin 6
-#define downButton 5                // down button on pin 5
-#define setButton 4                 // set button on pin 4
+int serialCount = 0;      
+int serialArray[2];
 
 void setup() {
   Serial.begin(9600);                 //for debugging
-  //  pinMode(upButton, INPUT_PULLUP);
-  //  pinMode(downButton, INPUT_PULLUP);
-  //  pinMode(setButton, INPUT_PULLUP);
-  Wire.begin();                       // join i2c bus as master
-  transmitter_setup( frequency );
-  randomSeed(analogRead(3) + analogRead(5));
-  transmitter_standby(frequency);
+  initRadio();
 }
 
-
+void initRadio() {
+  pinMode(encoderPinA, INPUT_PULLUP);
+  pinMode(encoderPinB, INPUT_PULLUP);
+  pinMode(buttonPin, INPUT_PULLUP);
+  for (int i=0; i<4; i++) {
+    pinMode(ls247pins[i],OUTPUT);
+    pinMode(anodepins[i],OUTPUT);
+  }
+  pinMode(dp, OUTPUT);  
+  digitalWrite(dp, HIGH);
+  attachInterrupt(0, doEncoder, CHANGE);  // encoder pin on interrupt 0 - pin 2
+  Wire.begin();                       // join i2c bus as master
+  transmitter_standby(frequency);
+  delay(2000);
+  transmitter_setup(frequency);
+}
 
 void loop() {
-  check_serial();
+  readEncoder();
+  // Serial.println( frequency, DEC );
+  print_lcd_frequency(frequency);
+  for (int i=0; i<4; i++) {
+    led7segWriteDigit(i, number[i]);
+    Serial.print(number[i]);
+    Serial.print("\t");
+  }
+  Serial.println();
+  //check_serial();
+}
+
+void readEncoder() {
+  int reading = digitalRead(buttonPin);
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    buttonState = reading;
+  }
+  if(buttonState == LOW) {
+
+    Serial.println("Pressed");
+    if ( gOnAir ) {
+      transmitter_standby( frequency );
+      buttonState = HIGH;
+    }
+    else {
+      set_freq( frequency );
+      Serial.println(frequency);
+      delay(1000);
+      buttonState = HIGH;
+    }
+
+  }
+  lastButtonState = reading;
 }
 
 
+void doEncoder() {
+  /* If pinA and pinB are both high or both low, it is spinning
+   * forward. If they're different, it's going backward.
+   */
+  if (digitalRead(encoderPinA) == digitalRead(encoderPinB)) {
+    frequency -= incrFM; 
+    delay(200);
+    frequency = constrain( frequency, botFM, topFM);  // Keeps us in range...
+  } 
+  else {
+    frequency += incrFM; 
+    delay(200);
+    frequency = constrain( frequency, botFM, topFM);  // Keeps us in range...
+  }
+}
+
+void led7segWriteDigit(int digit, int value) {
+  if (digit < 4) {
+    if (value < 16) {
+      // blank all       
+      for (int i=0; i<4; i++) {
+        digitalWrite(anodepins[i],LOW);
+      }
+
+      if (digit==3) (digitalWrite(dp,LOW));
+      else (digitalWrite(dp,HIGH));
+
+      for (int i=0; i<4; i++) {
+        digitalWrite(ls247pins[i],(bitRead(value,i)));
+      } 
+    }
+    // turn on the appropriate digit
+    digitalWrite(anodepins[digit],HIGH);
+  }
+  delay(1);
+}
+
+void print_lcd_frequency(long input) {
+  int freq;
+
+  freq = (int) (input / 100000);
+  number[0] = freq / 1000; // should be 0 or 1
+  if (number[0] == 0) number[0] = 15; // display blank LCD character
+  freq = freq % 1000;
+  number[1] = freq / 100;
+  freq = freq % 100;
+  number[2] = freq / 10;
+  freq = freq % 10;
+  number[3] = freq;
+}
+
+/*
+// RADIO FUNCTIONS
+ */
 
 void transmitter_setup(long initFrequency) {
   i2c_send(0x0E, B00000101); //Software reset
-
   i2c_send(0x01, B10110100); //Register 1: forced subcarrier, pilot tone on
-
-  i2c_send(0x02, B00000011); //Register 2: Unlock detect off, 2mW Tx Power
-
+  i2c_send(0x02, B00000001); //Register 2: Unlock detect off, 0.5mW Tx Power
   set_freq(initFrequency);
-
   //i2c_send(0x00, B10100001); //Register 0: 200mV audio input, 75us pre-emphasis on, crystal off, power on
   i2c_send(0x00, B00100001); //Register 0: 100mV audio input, 75us pre-emphasis on, crystal off, power on
-
   i2c_send(0x0E, B00000101); //Software reset
-
-  i2c_send(0x06, B00011110); //Register 6: charge pumps at 320uA and 80 uA
+  i2c_send(0x06, B00011010); //Register 6: charge pumps at 320uA and 1.25 uA
 }
 
 void transmitter_standby(long aFrequency) {
@@ -143,13 +249,25 @@ void check_serial() {
     int inByte = Serial.read();
     Serial.write(inByte); // communicate received message back to Max for debugging
     // set random frequency
+    /*
     if (inByte == 255) {
-      transmitter_standby(frequency);
-      long randomFrequency = (long) random(875, 1079);
-      Serial.write(randomFrequency/10);
-      long tempFrequency = randomFrequency * 100000;
-      frequency = tempFrequency;
-      set_freq(frequency);
+     transmitter_standby(frequency);
+     
+     frequency = tempFrequency;
+     set_freq(frequency);
+     }
+     */
+    if (inByte == 255) serialCount = 0;
+    // set incoming byte into a temporary array and move through it
+    // these values will be reassigned
+    serialArray[serialCount] = inByte;
+    Serial.write(serialArray[0]);
+    Serial.write(serialArray[1]);
+    serialCount++;
+    if (serialCount == 2) {
+      frequency = (serialArray[0] * 100) + serialArray[1];
+      // reset the serial count to receive the next message
+      serialCount = 0;
     }
     // set transmitter into standby mode
     if (inByte == 254) {
@@ -157,3 +275,10 @@ void check_serial() {
     }
   }
 }
+
+
+
+
+
+
+
